@@ -2,84 +2,221 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Куда дует ветер от БелАЭС? | Учебная симуляция</title>
-    <!-- Основные мета-теги для поисковиков -->
-    <meta name="description" content="Учебный симулятор, который по текущему направлению ветра показывает, куда мог бы пойти выброс с БелАЭС. Это иллюстрация, а не прогноз.">
+
+    <!-- Основные -->
+    <meta name="description" content="Учебный симулятор: как текущий ветер определяет направление и время прибытия возможного выброса с БелАЭС. Это иллюстрация, а не прогноз.">
+    <meta name="author" content="Сергей Бесараб">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <link rel="canonical" href="https://steanlab.github.io/belaes-wind/">
+
+    <!-- PWA и значки -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="application-name" content="Ветер БелАЭС">
+    <meta name="theme-color" content="#0b1d3a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Ветер БелАЭС">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="LAB66">
     <meta property="og:title" content="Куда дует ветер от БелАЭС? | Учебная симуляция">
     <meta property="og:description" content="Интерактивный учебный симулятор: как текущий ветер определяет направление возможного выброса от БелАЭС. Не прогноз.">
-    <meta property="og:image" content="https://steanlab.github.io/belaes-wind/preview-image.jpg">
     <meta property="og:url" content="https://steanlab.github.io/belaes-wind/">
-    <meta property="og:type" content="website">
+    <meta property="og:locale" content="ru_RU">
+    <meta property="og:locale:alternate" content="be_BY">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta property="og:locale:alternate" content="pl_PL">
+    <meta property="og:image" content="https://steanlab.github.io/belaes-wind/preview-image.jpg">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Градирни атомной электростанции на фоне вечернего неба">
+
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Куда дует ветер от БелАЭС? | Учебная симуляция">
     <meta name="twitter:description" content="Учебный симулятор: как текущий ветер определяет направление возможного выброса от БелАЭС. Не прогноз.">
     <meta name="twitter:image" content="https://steanlab.github.io/belaes-wind/preview-image.jpg">
-    <!-- Ссылки на стили -->
+    <meta name="twitter:image:alt" content="Градирни атомной электростанции на фоне вечернего неба">
+
+    <!-- Структурированные данные -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Куда дует ветер от БелАЭС?",
+        "alternateName": ["Where does the wind blow from the Belarusian NPP?", "Куды дзьме вецер ад БелАЭС?", "Dokąd wieje wiatr od BiełAES?"],
+        "url": "https://steanlab.github.io/belaes-wind/",
+        "description": "Учебный симулятор: как текущий ветер определяет направление и время прибытия возможного выброса с БелАЭС. Это иллюстрация, а не прогноз.",
+        "applicationCategory": "EducationalApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "inLanguage": ["ru", "be", "en", "pl"],
+        "isAccessibleForFree": true,
+        "license": "https://opensource.org/licenses/MIT",
+        "image": "https://steanlab.github.io/belaes-wind/preview-image.jpg",
+        "sameAs": "https://github.com/steanlab/belaes-wind",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "author": {
+            "@type": "Person",
+            "name": "Сергей Бесараб",
+            "alternateName": "Siarhei Besarab",
+            "url": "https://t.me/lab66",
+            "sameAs": ["https://www.wikidata.org/wiki/Q114079054", "https://t.me/lab66"]
+        }
+    }
+    </script>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="map"></div>
-    <div class="sim-badge">Учебная симуляция, не прогноз</div>
+    <div id="map" role="region" aria-label="Карта с симуляцией облака выброса" data-i18n-aria="mapAria"></div>
+
+    <div class="topbar">
+        <div class="sim-badge" data-i18n="badge">Учебная симуляция, не прогноз</div>
+        <button type="button" id="aboutBtn" class="icon-btn" aria-haspopup="dialog" aria-label="О модели и данных" data-i18n-aria="aboutBtn">ⓘ</button>
+    </div>
+
     <div class="main-title" id="mainTitle">
-        <h1>Коридор неопределенности</h1>
-        <p>Нажмите, чтобы увидеть возможные траектории облака при текущем ветре.</p>
+        <h1 data-i18n="h1">Куда может уйти облако при сегодняшнем ветре</h1>
+        <p data-i18n="h1sub">Нажмите кнопку, и симуляция покажет, как ветер определяет направление и время прибытия возможного выброса.</p>
     </div>
 
     <div class="action-area">
-        <div id="statusMessage" role="status" style="display: none;"></div>
-        <div id="iodine-info-footer" style="display: none;">
-            💡 <b>Подсказка:</b> йодид калия защищает щитовидную железу тем лучше, чем раньше он принят, а через много часов после прихода облака его польза резко падает. Принимать его нужно только по сообщению властей. Дозы зависят от возраста и состояния здоровья, см. <a href="https://www.who.int/publications/i/item/9789241550185" target="_blank" rel="noopener noreferrer">руководство ВОЗ</a>.
+        <div id="statusMessage" role="status" hidden></div>
+        <div class="dock" id="dock">
+            <div id="iodine-info-footer" data-i18n="iodineHtml" hidden></div>
+
+            <div id="clockRow" class="clock-row" hidden>
+                <div class="clock-block">
+                    <div id="clock" class="clock">+0 ч 0 мин</div>
+                    <div class="clock-caption" data-i18n="clockCaption">Прошло модельного времени</div>
+                </div>
+                <div class="legend">
+                    <span class="legend-item"><i class="sw sw-axis"></i><span data-i18n="legendAxis">ось облака</span></span>
+                    <span class="legend-item"><i class="sw sw-corridor"></i><span data-i18n="legendCorridor">коридор неопределенности</span></span>
+                </div>
+                <div class="clock-buttons">
+                    <button type="button" id="pauseBtn" class="small-btn" hidden>⏸ Пауза</button>
+                    <button type="button" id="speedBtn" class="small-btn" hidden>×1</button>
+                </div>
+            </div>
+
+            <div id="summary" class="summary" hidden>
+                <div id="summaryText" class="summary-text"></div>
+                <button type="button" id="summaryAll" class="link-btn" data-i18n="summaryAll">Все города</button>
+            </div>
+
+            <details class="whatif" id="whatIf">
+                <summary data-i18n="whatIfTitle">А если ветер другой?</summary>
+                <div class="whatif-body">
+                    <label class="radio"><input type="radio" name="windMode" value="current" checked> <span data-i18n="modeCurrent">Текущий ветер</span></label>
+                    <label class="radio"><input type="radio" name="windMode" value="custom"> <span data-i18n="modeCustom">Свой ветер</span></label>
+                    <div id="customBox" hidden>
+                        <label for="customDeg"><span data-i18n="customFromLabel">Откуда дует ветер</span>: <b id="customDegValue">270°</b></label>
+                        <input type="range" id="customDeg" min="0" max="359" step="1" value="270">
+                        <label for="customSpeed"><span data-i18n="customSpeedLabel">Скорость ветра</span>: <b id="customSpeedValue">5.0 м/с</b></label>
+                        <input type="range" id="customSpeed" min="0.5" max="25" step="0.5" value="5">
+                        <div id="customResult" class="custom-result"></div>
+                    </div>
+                </div>
+            </details>
+
+            <div class="btn-row">
+                <button type="button" id="simulateBtn" disabled>Загрузка...</button>
+                <button type="button" id="shareBtn" class="small-btn" data-i18n="share">Поделиться</button>
+                <button type="button" id="saveBtn" class="small-btn" data-i18n="saveImage" hidden>Сохранить картинку</button>
+            </div>
+            <div class="dock-foot"><span data-i18n="footerShort">Учебная симуляция, не прогноз.</span></div>
         </div>
-        <button id="simulateBtn" disabled>Загрузка...</button>
-        <footer>
-            <p><strong>Внимание!</strong> Это учебная симуляция, а не прогноз. Облако движется по прямой с постоянной скоростью приземного ветра на момент запуска. Модель не учитывает изменение ветра с высотой и со временем, рассеяние, осаждение и величину выброса. Реальная траектория может сильно отличаться. Создано радиационным химиком <a href="https://t.me/lab66" target="_blank" rel="noopener noreferrer">Сергеем Бесарабом</a> для демонстрации того, как погодные условия влияют на распространение пятна выброса. <a href="https://github.com/steanlab/belaes-wind" target="_blank" rel="noopener noreferrer">Методика и исходный код</a>.</p>
-        </footer>
     </div>
 
-    <button id="panelToggleBtn" aria-label="Открыть панель информации">☰</button>
+    <button type="button" id="panelToggleBtn" aria-label="Открыть панель информации" aria-expanded="false" aria-controls="infoPanel" data-i18n-aria="panelOpen">☰</button>
     <div class="info-panel-overlay" id="infoPanelOverlay"></div>
-    <div class="info-panel" id="infoPanel">
-        <div class="panel-header" id="panelHeader"><h2>Информация о текущей розе ветров</h2></div>
+    <aside class="info-panel" id="infoPanel">
+        <div class="panel-header" id="panelHeader"><h2 data-i18n="panelTitle">Информация о текущей розе ветров</h2></div>
         <div class="panel-content">
+            <div class="lang-row">
+                <label for="langSelect" data-i18n="langLabel">Язык</label>
+                <select id="langSelect">
+                    <option value="ru">Русский</option>
+                    <option value="be">Беларуская</option>
+                    <option value="en">English</option>
+                    <option value="pl">Polski</option>
+                </select>
+            </div>
             <div class="wind-rose-widget">
-                <img src="wind-rose-base.svg" alt="Основа розы ветров" class="wind-rose-base">
-                <img src="wind-rose-pointer.svg" alt="Стрелка показывает, куда дует ветер" id="wind-pointer" class="wind-rose-pointer">
-                <div id="wind-speed" class="wind-speed-display">--</div>
+                <img src="wind-rose-base.svg" alt="" class="wind-rose-base">
+                <img src="wind-rose-pointer.svg" alt="" id="wind-pointer" class="wind-rose-pointer">
+                <div id="wind-speed" class="wind-speed-display"><span id="windSpeedValue">--</span><small id="windSpeedUnit">м/с</small></div>
                 <small class="timestamp" id="update-time"></small>
             </div>
-            <p class="wind-caption">Стрелка показывает, куда дует ветер. Ветер на высоте 10 м у площадки АЭС (модель). Данные: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a></p>
-            <div id="cityTimers" style="display: none;">
-                <h3>Время прибытия облака выброса (с момента запуска симуляции):</h3>
-                <div class="timers-grid"></div>
+            <p class="wind-dir" id="windDirText"></p>
+            <p class="wind-caption" data-i18n="windCaptionHtml">Стрелка показывает, куда дует ветер. Ветер на высоте 10 м у площадки АЭС (модель). Данные: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a></p>
+            <p class="legend-note" id="legendNote" data-i18n="legendNote" hidden>Цвет не показывает концентрацию: на деле она с расстоянием падает на порядки.</p>
+            <div id="cityListBox" hidden>
+                <h3 data-i18n="cityListTitle">Время прибытия облака (с момента запуска симуляции)</h3>
+                <ul id="cityList" class="city-list"></ul>
             </div>
             <div class="links-panel">
-                <h3>Что делать?</h3>
+                <h3 data-i18n="whatToDo">Что делать?</h3>
+                <p class="links-note" id="linksNote" data-i18n="linksNote" hidden></p>
                 <ul>
-                    <li><a href="https://t.me/lab66/573" target="_blank" rel="noopener noreferrer">Действия при радиационных авариях</a></li>
-                    <li><a href="https://t.me/lab66/962" target="_blank" rel="noopener noreferrer">Главное о йодной профилактике</a></li>
-                    <li><a href="https://t.me/lab66/586" target="_blank" rel="noopener noreferrer">Антирадиационные смеси</a></li>
+                    <li><a href="https://t.me/lab66/573" target="_blank" rel="noopener noreferrer" data-i18n="link1">Действия при радиационных авариях</a></li>
+                    <li><a href="https://t.me/lab66/962" target="_blank" rel="noopener noreferrer" data-i18n="link2">Главное о йодной профилактике</a></li>
+                    <li><a href="https://t.me/lab66/586" target="_blank" rel="noopener noreferrer" data-i18n="link3">Антирадиационные смеси</a></li>
                 </ul>
-                <h3 class="subheader">Для любознательных:</h3>
+                <h3 class="subheader" data-i18n="curious">Для любознательных:</h3>
                 <ul>
-                    <li><a href="https://steanlab.medium.com/iodine-42a12a13e3d" target="_blank" rel="noopener noreferrer">Охотникам за йодом посвящается</a></li>
-                    <li><a href="https://www.patreon.com/posts/50726105" target="_blank" rel="noopener noreferrer">Ветер и радиоактивные аэрозоли</a></li>
+                    <li><a href="https://steanlab.medium.com/iodine-42a12a13e3d" target="_blank" rel="noopener noreferrer" data-i18n="link4">Охотникам за йодом посвящается</a></li>
+                    <li><a href="https://www.patreon.com/posts/50726105" target="_blank" rel="noopener noreferrer" data-i18n="link5">Ветер и радиоактивные аэрозоли</a></li>
                 </ul>
                 <div class="donate-block">
-                    <h3 class="subheader">Поддержать развитие проекта</h3>
+                    <h3 class="subheader" data-i18n="donateTitle">Поддержать развитие проекта</h3>
                     <ul>
-                        <li><a href="https://liberapay.com/steanlab/donate" target="_blank" rel="noopener noreferrer">Свободные пожертвования LiberaPay (MC/Visa/PayPal)</a></li>
-                        <li><a href="https://steanlab.medium.com/donations-for-lab66-steanlab-9e2bfb58b05d" target="_blank" rel="noopener noreferrer">Добровольные криптовалютные пожертвования</a></li>
+                        <li><a href="https://liberapay.com/steanlab/donate" target="_blank" rel="noopener noreferrer" data-i18n="donate1">Свободные пожертвования LiberaPay (MC/Visa/PayPal)</a></li>
+                        <li><a href="https://steanlab.medium.com/donations-for-lab66-steanlab-9e2bfb58b05d" target="_blank" rel="noopener noreferrer" data-i18n="donate2">Добровольные криптовалютные пожертвования</a></li>
                     </ul>
                 </div>
             </div>
         </div>
-    </div>
+    </aside>
+
+    <dialog id="aboutDialog" aria-labelledby="aboutTitle">
+        <div class="about">
+            <h2 id="aboutTitle" data-i18n="aboutTitle">О модели и данных</h2>
+            <p data-i18n="aboutWhatHtml">Учебная симуляция показывает, как текущий ветер определяет направление и время прибытия возможного выброса от БелАЭС. Это иллюстрация, а не прогноз и не оценка риска.</p>
+            <h3 data-i18n="aboutModelTitle">Как устроена модель</h3>
+            <ul data-i18n="aboutModelHtml"></ul>
+            <h3 data-i18n="aboutDataTitle">Данные</h3>
+            <p data-i18n="aboutDataHtml"></p>
+            <h3 data-i18n="aboutPrivacyTitle">Конфиденциальность</h3>
+            <p data-i18n="aboutPrivacyHtml"></p>
+            <h3 data-i18n="aboutInstallTitle">Установка</h3>
+            <p><button type="button" id="installBtn" class="small-btn" data-i18n="install" hidden>Установить как приложение</button><span id="installHint"></span></p>
+            <p data-i18n="aboutAuthorHtml"></p>
+            <p class="version" id="appVersion"></p>
+            <button type="button" id="aboutClose" class="small-btn close-btn" data-i18n="aboutClose">Закрыть</button>
+        </div>
+    </dialog>
+
+    <div id="toast" role="status" hidden></div>
+    <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="i18n.js" defer></script>
     <script src="script.js" defer></script>
 </body>
 </html>
