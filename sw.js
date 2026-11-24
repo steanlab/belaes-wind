@@ -5,7 +5,7 @@
  */
 'use strict';
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const CACHE = `belaes-wind-${VERSION}`;
 const SHELL = [
     './',
@@ -13,6 +13,7 @@ const SHELL = [
     'style.css',
     'script.js',
     'i18n.js',
+    'model.js',
     'manifest.webmanifest',
     'wind-rose-base.svg',
     'wind-rose-pointer.svg',

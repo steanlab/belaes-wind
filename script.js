@@ -1,80 +1,70 @@
 /*
  * Куда дует ветер от БелАЭС? Учебная симуляция.
- * Модель: облако идет по прямой в сторону, куда дует ветер, с постоянной скоростью
- * и расширяется конусом. Ветер берется один раз при запуске (Open-Meteo, 10 м)
- * либо задается вручную. Подробности и ограничения: README.md
+ * Интерфейс и данные. Сама модель (поле ветра, траектория по часам, устойчивость, полоса облака)
+ * находится в model.js. Подробности и ограничения: README.md
  */
 (function () {
     'use strict';
 
-    const I18N = (typeof module !== 'undefined' && module.exports) ? require('./i18n.js') : window.AstravyetsI18n;
+    const IN_NODE = typeof module !== 'undefined' && module.exports;
+    const I18N = IN_NODE ? require('./i18n.js') : window.AstravyetsI18n;
+    const M = IN_NODE ? require('./model.js') : window.BelaesModel;
+    const { normalizeAngle, windToBearing, destinationPoint, distanceBetween, NPP_COORDS } = M;
 
     // ===== Настройки =====
-    const APP_VERSION = '2.0.0';
-    const NPP_COORDS = [54.773, 26.096];
+    const APP_VERSION = '2.1.0';
     const WIND_API_URL = 'https://api.open-meteo.com/v1/forecast';
-    const WIND_REFRESH_MS = 5 * 60 * 1000;      // Open-Meteo обновляет текущие значения примерно раз в 15 минут
     const WIND_FETCH_TIMEOUT_MS = 10 * 1000;
+    const FIELD_REFRESH_MS = { static: 15 * 60 * 1000, direct: 60 * 60 * 1000, single: 5 * 60 * 1000 };   // как часто обновлять поле ветра
+    const FIELD_RETRY_MS = 2 * 60 * 1000;       // повтор после сбоя
+    const AGO_OPTIONS = [0, 1, 2, 3, 6, 12, 18, 24];   // «авария была N часов назад»
+    const MAX_AGO_HOURS = 24;
     const SIMULATION_SPEED_MULTIPLIER = 3600;   // при скорости x1: 1 секунда реального времени = 1 час модельного
     const SPEEDS = [0.5, 1, 2, 4];
     const DEFAULT_SPEED_INDEX = 1;
     const UPDATE_INTERVAL_MS = 100;
     const FOLLOW_EVERY_TICKS = 10;              // как часто проверять, не вышло ли облако за край карты
     const MAX_SIMULATION_HOURS = 48;            // после этого симуляция останавливается
-    const PLUME_HALF_ANGLE_DEG = 15;            // полуугол конуса облака (условный)
-    const AXIS_UNCERTAINTY_DEG = 15;            // сдвиг оси облака для «коридора неопределенности» (условный)
-    const PLUME_SEGMENTS = 50;
     const OPACITY_START = 0.5;                  // условная прозрачность: плотность облака с расстоянием падает
     const OPACITY_END = 0.12;
     const CUSTOM_SPEED_MIN = 0.5;
     const CUSTOM_SPEED_MAX = 25;
-    const EARTH_RADIUS_M = 6371000;
     const LANG_STORAGE_KEY = 'belaes-wind-lang';
     const LANG_CODES = I18N.LANGS.map((l) => l.code);
 
     const CITIES = [
-        { id: 'vilnius', coords: [54.687, 25.279], names: { ru: 'Вильнюс', be: 'Вільнюс', en: 'Vilnius', pl: 'Wilno' } },
-        { id: 'minsk', coords: [53.904, 27.561], names: { ru: 'Минск', be: 'Мінск', en: 'Minsk', pl: 'Mińsk' } },
-        { id: 'chisinau', coords: [47.026, 28.858], names: { ru: 'Кишинев', be: 'Кішынёў', en: 'Chișinău', pl: 'Kiszyniów' } },
-        { id: 'swinoujscie', coords: [53.914, 14.249], names: { ru: 'Свиноуйсьце', be: 'Свіноуйсьце', en: 'Świnoujście', pl: 'Świnoujście' } },
-        { id: 'sofia', coords: [42.698, 23.322], names: { ru: 'София', be: 'Сафія', en: 'Sofia', pl: 'Sofia' } },
-        { id: 'krakow', coords: [50.064, 19.945], names: { ru: 'Краков', be: 'Кракаў', en: 'Kraków', pl: 'Kraków' } },
-        { id: 'kharkiv', coords: [49.922, 36.321], names: { ru: 'Харьков', be: 'Харкаў', en: 'Kharkiv', pl: 'Charków' } },
-        { id: 'warsaw', coords: [52.229, 21.012], names: { ru: 'Варшава', be: 'Варшава', en: 'Warsaw', pl: 'Warszawa' } },
-        { id: 'wroclaw', coords: [51.107, 17.038], names: { ru: 'Вроцлав', be: 'Вроцлаў', en: 'Wrocław', pl: 'Wrocław' } },
-        { id: 'bialystok', coords: [53.132, 23.169], names: { ru: 'Белосток', be: 'Беласток', en: 'Białystok', pl: 'Białystok' } },
-        { id: 'liepaja', coords: [56.511, 21.013], names: { ru: 'Лиепая', be: 'Ліепая', en: 'Liepāja', pl: 'Lipawa' } },
-        { id: 'palanga', coords: [55.918, 21.069], names: { ru: 'Паланга', be: 'Паланга', en: 'Palanga', pl: 'Połąga' } },
-        { id: 'ventspils', coords: [57.319, 21.564], names: { ru: 'Вентспилс', be: 'Вентспілс', en: 'Ventspils', pl: 'Windawa' } },
-        { id: 'tallinn', coords: [59.437, 24.754], names: { ru: 'Таллин', be: 'Талін', en: 'Tallinn', pl: 'Tallin' } },
-        { id: 'riga', coords: [56.949, 24.105], names: { ru: 'Рига', be: 'Рыга', en: 'Riga', pl: 'Ryga' } },
-        { id: 'kaunas', coords: [54.898, 23.903], names: { ru: 'Каунас', be: 'Каўнас', en: 'Kaunas', pl: 'Kowno' } },
-        { id: 'asveya', coords: [56.015, 28.115], names: { ru: 'Освея', be: 'Асвея', en: 'Asveya', pl: 'Asweja' } },
-        { id: 'kyiv', coords: [50.45, 30.523], names: { ru: 'Киев', be: 'Кіеў', en: 'Kyiv', pl: 'Kijów' } },
-        { id: 'navahrudak', coords: [53.596, 25.827], names: { ru: 'Новогрудок', be: 'Навагрудак', en: 'Navahrudak', pl: 'Nowogródek' } },
-        { id: 'zhodzina', coords: [54.093, 28.34], names: { ru: 'Жодино', be: 'Жодзіна', en: 'Zhodzina', pl: 'Żodzino' } },
-        { id: 'hrodna', coords: [53.669, 23.826], names: { ru: 'Гродно', be: 'Горадня', en: 'Hrodna', pl: 'Grodno' } },
-        { id: 'pinsk', coords: [52.115, 26.103], names: { ru: 'Пинск', be: 'Пінск', en: 'Pinsk', pl: 'Pińsk' } },
-        { id: 'saint-petersburg', coords: [59.934, 30.335], names: { ru: 'Санкт-Петербург', be: 'Санкт-Пецярбург', en: 'Saint Petersburg', pl: 'Petersburg' } },
-        { id: 'vitebsk', coords: [55.19, 30.205], names: { ru: 'Витебск', be: 'Віцебск', en: 'Vitebsk', pl: 'Witebsk' } },
-        { id: 'eisenach', coords: [50.978, 10.318], names: { ru: 'Эйзенах', be: 'Айзенах', en: 'Eisenach', pl: 'Eisenach' } },
-        { id: 'tatariv', coords: [48.349, 24.577], names: { ru: 'Татаров', be: 'Татараў', en: 'Tatariv', pl: 'Tatarów' } },
-        { id: 'elblag', coords: [54.156, 19.402], names: { ru: 'Эльблонг', be: 'Эльблонг', en: 'Elbląg', pl: 'Elbląg' } },
-        { id: 'homel', coords: [52.424, 31.014], names: { ru: 'Гомель', be: 'Гомель', en: 'Homel', pl: 'Homel' } },
-        { id: 'vyborg', coords: [60.709, 28.747], names: { ru: 'Выборг', be: 'Выбарг', en: 'Vyborg', pl: 'Wyborg' } }
+        { id: 'vilnius', coords: [54.687, 25.279], names: { ru: 'Вильнюс', be: 'Вільнюс', en: 'Vilnius', pl: 'Wilno', lt: 'Vilnius' } },
+        { id: 'minsk', coords: [53.904, 27.561], names: { ru: 'Минск', be: 'Мінск', en: 'Minsk', pl: 'Mińsk', lt: 'Minskas' } },
+        { id: 'chisinau', coords: [47.026, 28.858], names: { ru: 'Кишинев', be: 'Кішынёў', en: 'Chișinău', pl: 'Kiszyniów', lt: 'Kišiniovas' } },
+        { id: 'swinoujscie', coords: [53.914, 14.249], names: { ru: 'Свиноуйсьце', be: 'Свіноуйсьце', en: 'Świnoujście', pl: 'Świnoujście', lt: 'Svinoustė' } },
+        { id: 'sofia', coords: [42.698, 23.322], names: { ru: 'София', be: 'Сафія', en: 'Sofia', pl: 'Sofia', lt: 'Sofija' } },
+        { id: 'krakow', coords: [50.064, 19.945], names: { ru: 'Краков', be: 'Кракаў', en: 'Kraków', pl: 'Kraków', lt: 'Krokuva' } },
+        { id: 'kharkiv', coords: [49.922, 36.321], names: { ru: 'Харьков', be: 'Харкаў', en: 'Kharkiv', pl: 'Charków', lt: 'Charkivas' } },
+        { id: 'warsaw', coords: [52.229, 21.012], names: { ru: 'Варшава', be: 'Варшава', en: 'Warsaw', pl: 'Warszawa', lt: 'Varšuva' } },
+        { id: 'wroclaw', coords: [51.107, 17.038], names: { ru: 'Вроцлав', be: 'Вроцлаў', en: 'Wrocław', pl: 'Wrocław', lt: 'Vroclavas' } },
+        { id: 'bialystok', coords: [53.132, 23.169], names: { ru: 'Белосток', be: 'Беласток', en: 'Białystok', pl: 'Białystok', lt: 'Balstogė' } },
+        { id: 'liepaja', coords: [56.511, 21.013], names: { ru: 'Лиепая', be: 'Ліепая', en: 'Liepāja', pl: 'Lipawa', lt: 'Liepoja' } },
+        { id: 'palanga', coords: [55.918, 21.069], names: { ru: 'Паланга', be: 'Паланга', en: 'Palanga', pl: 'Połąga', lt: 'Palanga' } },
+        { id: 'ventspils', coords: [57.319, 21.564], names: { ru: 'Вентспилс', be: 'Вентспілс', en: 'Ventspils', pl: 'Windawa', lt: 'Ventspilis' } },
+        { id: 'tallinn', coords: [59.437, 24.754], names: { ru: 'Таллин', be: 'Талін', en: 'Tallinn', pl: 'Tallin', lt: 'Talinas' } },
+        { id: 'riga', coords: [56.949, 24.105], names: { ru: 'Рига', be: 'Рыга', en: 'Riga', pl: 'Ryga', lt: 'Ryga' } },
+        { id: 'kaunas', coords: [54.898, 23.903], names: { ru: 'Каунас', be: 'Каўнас', en: 'Kaunas', pl: 'Kowno', lt: 'Kaunas' } },
+        { id: 'asveya', coords: [56.015, 28.115], names: { ru: 'Освея', be: 'Асвея', en: 'Asveya', pl: 'Asweja', lt: 'Asvėja' } },
+        { id: 'kyiv', coords: [50.45, 30.523], names: { ru: 'Киев', be: 'Кіеў', en: 'Kyiv', pl: 'Kijów', lt: 'Kijevas' } },
+        { id: 'navahrudak', coords: [53.596, 25.827], names: { ru: 'Новогрудок', be: 'Навагрудак', en: 'Navahrudak', pl: 'Nowogródek', lt: 'Naugardukas' } },
+        { id: 'zhodzina', coords: [54.093, 28.34], names: { ru: 'Жодино', be: 'Жодзіна', en: 'Zhodzina', pl: 'Żodzino', lt: 'Žodinas' } },
+        { id: 'hrodna', coords: [53.669, 23.826], names: { ru: 'Гродно', be: 'Горадня', en: 'Hrodna', pl: 'Grodno', lt: 'Gardinas' } },
+        { id: 'pinsk', coords: [52.115, 26.103], names: { ru: 'Пинск', be: 'Пінск', en: 'Pinsk', pl: 'Pińsk', lt: 'Pinskas' } },
+        { id: 'saint-petersburg', coords: [59.934, 30.335], names: { ru: 'Санкт-Петербург', be: 'Санкт-Пецярбург', en: 'Saint Petersburg', pl: 'Petersburg', lt: 'Sankt Peterburgas' } },
+        { id: 'vitebsk', coords: [55.19, 30.205], names: { ru: 'Витебск', be: 'Віцебск', en: 'Vitebsk', pl: 'Witebsk', lt: 'Vitebskas' } },
+        { id: 'eisenach', coords: [50.978, 10.318], names: { ru: 'Эйзенах', be: 'Айзенах', en: 'Eisenach', pl: 'Eisenach', lt: 'Eizenachas' } },
+        { id: 'tatariv', coords: [48.349, 24.577], names: { ru: 'Татаров', be: 'Татараў', en: 'Tatariv', pl: 'Tatarów', lt: 'Tatariv' } },
+        { id: 'elblag', coords: [54.156, 19.402], names: { ru: 'Эльблонг', be: 'Эльблонг', en: 'Elbląg', pl: 'Elbląg', lt: 'Elblągas' } },
+        { id: 'homel', coords: [52.424, 31.014], names: { ru: 'Гомель', be: 'Гомель', en: 'Homel', pl: 'Homel', lt: 'Gomelis' } },
+        { id: 'vyborg', coords: [60.709, 28.747], names: { ru: 'Выборг', be: 'Выбарг', en: 'Vyborg', pl: 'Wyborg', lt: 'Viborgas' } }
     ];
 
     // ===== Геометрия, разбор данных, форматирование (чистые функции, без DOM и Leaflet) =====
-
-    function normalizeAngle(deg) {
-        return ((deg % 360) + 360) % 360;
-    }
-
-    // Метеорологическое направление ветра это направление, ОТКУДА он дует.
-    // Облако движется в противоположную сторону.
-    function windToBearing(windFromDeg) {
-        return normalizeAngle(windFromDeg + 180);
-    }
 
     // Индекс из 8 сторон света: 0 север, 1 северо-восток, 2 восток и так далее.
     function compassIndex(deg) {
@@ -85,58 +75,6 @@
     function shortestAngleTarget(current, target) {
         const delta = ((normalizeAngle(target) - normalizeAngle(current) + 540) % 360) - 180;
         return current + delta;
-    }
-
-    function destinationPoint(point, bearingDeg, distanceM) {
-        const lat1 = point[0] * Math.PI / 180;
-        const lng1 = point[1] * Math.PI / 180;
-        const bearing = bearingDeg * Math.PI / 180;
-        const ang = distanceM / EARTH_RADIUS_M;
-        const lat2 = Math.asin(Math.sin(lat1) * Math.cos(ang) + Math.cos(lat1) * Math.sin(ang) * Math.cos(bearing));
-        const lng2 = lng1 + Math.atan2(Math.sin(bearing) * Math.sin(ang) * Math.cos(lat1), Math.cos(ang) - Math.sin(lat1) * Math.sin(lat2));
-        return [lat2 * 180 / Math.PI, ((lng2 * 180 / Math.PI + 540) % 360) - 180];
-    }
-
-    function distanceBetween(a, b) {
-        const lat1 = a[0] * Math.PI / 180;
-        const lat2 = b[0] * Math.PI / 180;
-        const dLat = lat2 - lat1;
-        const dLng = (b[1] - a[1]) * Math.PI / 180;
-        const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-        return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
-    }
-
-    // Конус от источника: ось длиной distanceM, ширина растет линейно (полуугол halfAngleDeg).
-    function createPlumePolygon(origin, bearingDeg, distanceM, halfAngleDeg, segments) {
-        const spread = distanceM * Math.tan(halfAngleDeg * Math.PI / 180);
-        const step = distanceM / segments;
-        const axis = [origin];
-        for (let i = 0; i < segments; i++) {
-            axis.push(destinationPoint(axis[i], bearingDeg, step));
-        }
-        const left = [];
-        const right = [];
-        for (let i = 1; i < axis.length; i++) {
-            const offset = i / segments * spread;
-            left.push(destinationPoint(axis[i], bearingDeg - 90, offset));
-            right.push(destinationPoint(axis[i], bearingDeg + 90, offset));
-        }
-        return [origin, ...left, ...right.reverse()];
-    }
-
-    // Алгоритм луча. point и вершины в формате [широта, долгота].
-    function pointInPolygon(point, polygon) {
-        const lat = point[0];
-        const lng = point[1];
-        let inside = false;
-        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-            const latI = polygon[i][0], lngI = polygon[i][1];
-            const latJ = polygon[j][0], lngJ = polygon[j][1];
-            const crosses = (latI > lat) !== (latJ > lat) &&
-                lng < (lngJ - lngI) * (lat - latI) / (latJ - latI) + lngI;
-            if (crosses) inside = !inside;
-        }
-        return inside;
     }
 
     function plumeOpacity(elapsedHours) {
@@ -211,10 +149,13 @@
         return `${WIND_API_URL}?${params.toString()}`;
     }
 
-    // Параметры ссылки: lang, wd (откуда дует, градусы), ws (скорость, м/с), run=1 (сразу запустить).
-    function parseShareParams(search) {
+    // Параметры ссылки: lang, wd (откуда дует, градусы) и ws (скорость, м/с) для своего ветра,
+    // at (момент аварии, UTC, например 2026-11-24T14:07Z), city (id города для блока «Где я»),
+    // run=1 (сразу запустить). Момент at принимается, если он не в будущем и не старше суток.
+    function parseShareParams(search, nowMs) {
         const p = new URLSearchParams(search || '');
-        const out = { lang: null, custom: null, run: false };
+        const now = nowMs === undefined ? Date.now() : nowMs;
+        const out = { lang: null, custom: null, run: p.get('run') === '1', atMs: null, atInvalid: false, city: null };
         const lang = p.get('lang');
         if (lang && LANG_CODES.includes(lang)) out.lang = lang;
         const wdRaw = p.get('wd');
@@ -224,9 +165,16 @@
             const ws = Number(wsRaw);
             if (Number.isFinite(wd) && Number.isFinite(ws) && wd >= 0 && wd <= 360 && ws >= CUSTOM_SPEED_MIN && ws <= CUSTOM_SPEED_MAX) {
                 out.custom = { deg: normalizeAngle(Math.round(wd)), speed: Math.round(ws * 10) / 10 };
-                out.run = p.get('run') === '1';
             }
         }
+        const atRaw = p.get('at');
+        if (atRaw && !out.custom) {
+            const at = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/.test(atRaw) ? Date.parse(atRaw) : NaN;
+            if (Number.isFinite(at) && at <= now + 60000 && now - at <= (MAX_AGO_HOURS * 3600 + 60) * 1000) out.atMs = Math.min(at, now);
+            else out.atInvalid = true;
+        }
+        const city = p.get('city');
+        if (city && CITIES.some((c) => c.id === city)) out.city = city;
         return out;
     }
 
@@ -238,8 +186,11 @@
         if (opts.custom) {
             url.searchParams.set('wd', String(opts.custom.deg));
             url.searchParams.set('ws', String(opts.custom.speed));
-            url.searchParams.set('run', '1');
+        } else if (opts.atMs) {
+            url.searchParams.set('at', new Date(opts.atMs).toISOString().slice(0, 16) + 'Z');
         }
+        if (opts.city) url.searchParams.set('city', opts.city);
+        if (opts.run) url.searchParams.set('run', '1');
         return url.toString();
     }
 
@@ -367,6 +318,7 @@
         const $ = (id) => document.getElementById(id);
         const mq = (q) => (window.matchMedia ? window.matchMedia(q).matches : false);
         const isMobile = () => mq('(max-width: 768px)');
+        const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
         function storageGet(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
         function storageSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) { /* хранилище недоступно */ } }
@@ -378,13 +330,20 @@
             busy: false,
             mode: shareParams.custom ? 'custom' : 'current',
             custom: shareParams.custom || { deg: 270, speed: 5 },
-            windData: null,
+            field: null,                 // поле ветра (сетка или одинаковый ветер)
+            fieldInfo: null,             // { source: static | direct | single, ts, generatedMs }
+            windData: null,              // ветер у площадки АЭС в момент аварии (для розы ветров)
+            agoHours: 0,                 // авария была столько часов назад (выбор в списке)
+            accidentAtMs: shareParams.atMs, // точный момент аварии из ссылки, иначе null
+            preview: null,               // сценарий для блока «Где я» до запуска симуляции
+            where: shareParams.city ? { kind: 'city', id: shareParams.city } : null,
+            whereStatus: null,           // ключ временного сообщения: whereLocating, whereDenied, whereNoGeo
             notice: null,                // { key, params } временные сообщения
             sim: null,
-            arrived: {},                 // id города -> секунды до прибытия
+            arrived: {},                 // id города -> секунды после аварии
             lastPolys: null,
             pointerAngle: 0,
-            simStale: false,             // true, если после остановки пользователь уже меняет ветер
+            simStale: false,             // true, если после остановки пользователь уже меняет ветер или время аварии
             installEvent: null
         };
 
@@ -392,12 +351,15 @@
         const cityName = (c) => c.names[state.lang] || c.names.ru;
         const dirTo = (deg) => I18N.t(state.lang, 'dirTo')[compassIndex(windToBearing(deg))];
         const dirFrom = (deg) => I18N.t(state.lang, 'dirFrom')[compassIndex(deg)];
+        const locale = () => (state.lang === 'be' ? 'be-BY' : state.lang);
 
         let map = null;
         let simulationInterval = null;
         let toastTimer = null;
+        let loadingPromise = null;
+        let youMarker = null;
         const cityMarkers = {};
-        const plumeLayers = { center: null, left: null, right: null };
+        const plumeLayers = { center: null, outer: null };
 
         // --- Язык ---
 
@@ -425,6 +387,7 @@
             state.lang = lang;
             storageSet(LANG_STORAGE_KEY, lang);
             applyStaticTexts();
+            renderCitySelect();
             renderAll();
         }
 
@@ -460,6 +423,15 @@
                 marker.setPopupContent(text);
                 marker.setTooltipContent(text);
             });
+            if (youMarker) youMarker.setTooltipContent(t('youAreHere'));
+        }
+
+        function setYouMarker(coords) {
+            if (!map) return;
+            if (youMarker) { map.removeLayer(youMarker); youMarker = null; }
+            if (!coords) return;
+            youMarker = L.circleMarker(coords, { radius: 8, color: '#ffffff', weight: 3, fillColor: '#1976d2', fillOpacity: 1 }).addTo(map);
+            youMarker.bindTooltip(t('youAreHere'), { permanent: false, direction: 'top' });
         }
 
         function updatePlumeLayer(key, points, style) {
@@ -508,6 +480,99 @@
             });
         }
 
+        // --- Момент аварии, поле ветра, сценарий ---
+
+        // Выбор времени аварии доступен только для прогноза по сетке. Для своего ветра и запасного режима авария всегда «сейчас».
+        function accidentUsable() {
+            return state.mode === 'current' && !(state.fieldInfo && state.fieldInfo.source === 'single');
+        }
+
+        function accidentStartMs() {
+            if (!accidentUsable()) return Date.now();
+            if (state.accidentAtMs) return Math.max(Date.now() - MAX_AGO_HOURS * 3600000, state.accidentAtMs);
+            return Date.now() - state.agoHours * 3600000;
+        }
+
+        function agoDisplay() {
+            return state.accidentAtMs ? clamp((Date.now() - state.accidentAtMs) / 3600000, 0, MAX_AGO_HOURS) : state.agoHours;
+        }
+
+        function wallClock(ms) {
+            const d = new Date(ms);
+            const time = d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+            if (d.toDateString() === new Date().toDateString()) return time;
+            return `${d.toLocaleDateString(locale(), { day: '2-digit', month: '2-digit' })} ${time}`;
+        }
+
+        function currentField() {
+            if (state.mode === 'custom') return M.makeUniformField(state.custom.speed, state.custom.deg);
+            return state.field;
+        }
+
+        function makeScenario(startMs) {
+            const field = currentField();
+            return field ? M.buildScenario(field, startMs, CITIES) : null;
+        }
+
+        function rebuildPreview() {
+            state.preview = makeScenario(accidentStartMs());
+            renderWhere();
+        }
+
+        function deriveWindData() {
+            if (!state.field || !state.fieldInfo) { state.windData = null; return; }
+            const w = M.windAt(state.field, NPP_COORDS[0], NPP_COORDS[1], accidentStartMs());
+            state.windData = { speed: w.speed, fromDeg: w.fromDeg, time: state.fieldInfo.generatedMs ? new Date(state.fieldInfo.generatedMs) : null };
+        }
+
+        // Возвращает true, если данные обновлены. strict: при сбое без прежних данных всегда переходить в состояние error.
+        function loadField(strict) {
+            if (loadingPromise) return loadingPromise;
+            loadingPromise = (async () => {
+                try {
+                    let grid = null;
+                    let source = null;
+                    try { grid = await M.fetchStaticGrid(window.fetch.bind(window), Date.now()); source = 'static'; } catch (e) { console.warn('Static data:', e.message); }
+                    if (!grid) {
+                        try { grid = await M.fetchDirectGrid(window.fetch.bind(window), Date.now()); source = 'direct'; } catch (e) { console.warn('Direct grid:', e.message); }
+                    }
+                    if (grid) {
+                        state.field = M.makeGridField(grid);
+                        state.fieldInfo = { source, ts: Date.now(), generatedMs: grid.generatedMs };
+                    } else {
+                        const controller = new AbortController();
+                        const timer = setTimeout(() => controller.abort(), WIND_FETCH_TIMEOUT_MS);
+                        try {
+                            const response = await fetch(buildWindUrl(), { signal: controller.signal });
+                            if (!response.ok) throw new Error(`API ${response.status}`);
+                            const w = parseWindResponse(await response.json());
+                            state.field = M.makeUniformField(w.speed, w.fromDeg);
+                            state.fieldInfo = { source: 'single', ts: Date.now(), generatedMs: (w.time || new Date()).getTime() };
+                        } finally {
+                            clearTimeout(timer);
+                        }
+                    }
+                    deriveWindData();
+                    if (state.phase === 'loading' || state.phase === 'error') state.phase = 'ready';
+                    rebuildPreview();
+                    renderAll();
+                    return true;
+                } catch (error) {
+                    console.error('Wind fetch error:', error.message);
+                    if (state.field && !strict) return false;
+                    if (!state.field) {
+                        state.windData = null;
+                        state.phase = 'error';
+                        renderAll();
+                    }
+                    return false;
+                } finally {
+                    loadingPromise = null;
+                }
+            })();
+            return loadingPromise;
+        }
+
         // --- Ветер ---
 
         function effectiveWind() {
@@ -542,7 +607,7 @@
                 stamp.textContent = t('modeCustom');
             } else {
                 const shown = wind.time || new Date();
-                stamp.textContent = t('windTimeAt', { time: shown.toLocaleTimeString(state.lang === 'be' ? 'be-BY' : state.lang, { hour: '2-digit', minute: '2-digit' }) });
+                stamp.textContent = t('windTimeAt', { time: shown.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) });
             }
         }
 
@@ -566,29 +631,115 @@
             radios.forEach((r) => { r.disabled = running; });
         }
 
-        // Возвращает true, если свежие данные получены. strict: при сбое всегда переходить в состояние error.
-        async function refreshWind(strict) {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), WIND_FETCH_TIMEOUT_MS);
-            try {
-                const response = await fetch(buildWindUrl(), { signal: controller.signal });
-                if (!response.ok) throw new Error(`API ${response.status}`);
-                state.windData = parseWindResponse(await response.json());
-                if (state.phase === 'loading' || state.phase === 'error') state.phase = 'ready';
-                renderAll();
-                return true;
-            } catch (error) {
-                console.error('Wind fetch error:', error.message);
-                const running = state.phase === 'simulating' || state.phase === 'finished';
-                if (strict || !running) {
-                    state.windData = null;
-                    state.phase = 'error';
-                    renderAll();
-                }
-                return false;
-            } finally {
-                clearTimeout(timer);
-            }
+        // --- Время аварии ---
+
+        function renderAgo() {
+            const row = $('agoRow');
+            const select = $('agoSelect');
+            if (!row || !select) return;
+            const running = state.phase === 'simulating';
+            row.hidden = !accidentUsable() || state.phase === 'loading' || state.phase === 'error';
+            const current = agoDisplay();
+            const values = AGO_OPTIONS.slice();
+            const near = values.find((h) => Math.abs(h - current) < 0.05);
+            const selected = near === undefined ? Math.round(current * 10) / 10 : near;
+            if (near === undefined) { values.push(selected); values.sort((a, b) => a - b); }
+            select.textContent = '';
+            values.forEach((h) => {
+                const option = document.createElement('option');
+                option.value = String(h);
+                option.textContent = h === 0 ? t('agoNow') : t('agoN', { n: h });
+                select.appendChild(option);
+            });
+            select.value = String(selected);
+            select.disabled = running || state.busy;
+        }
+
+        function renderAccident() {
+            const el = $('accidentLine');
+            if (!el) return;
+            const sim = state.sim;
+            const show = sim && (state.phase === 'simulating' || state.phase === 'finished') && sim.elapsed0 > 600;
+            el.hidden = !show;
+            if (show) el.textContent = t('accidentAt', { time: wallClock(sim.scenario.startMs) });
+        }
+
+        function renderStability() {
+            const el = $('stabilityLine');
+            if (!el) return;
+            const sim = state.sim;
+            const show = sim && (state.phase === 'simulating' || state.phase === 'finished');
+            el.hidden = !show;
+            if (!show) return;
+            const point = M.pointAtElapsed(sim.scenario.path, sim.elapsed);
+            const key = { unstable: 'stabUnstable', neutral: 'stabNeutral', stable: 'stabStable' }[M.stabilityGroup(point.cls)];
+            el.textContent = t(key, { cls: point.cls });
+        }
+
+        // --- Блок «Где я» ---
+
+        function whereTarget() {
+            if (!state.where) return null;
+            if (state.where.kind === 'geo') return { coords: state.where.coords };
+            const city = CITIES.find((c) => c.id === state.where.id);
+            return city ? { coords: city.coords } : null;
+        }
+
+        function activeScenario() {
+            return state.sim && !state.simStale ? state.sim.scenario : state.preview;
+        }
+
+        function whereMessage() {
+            const target = whereTarget();
+            const scenario = activeScenario();
+            if (!target || !scenario) return '';
+            const r = M.locationResult(scenario, target.coords);
+            const km = Math.round(r.distanceM / 1000);
+            if (r.status === 'none') return t('whereNone', { km, h: Math.round(scenario.horizonSec / 3600) });
+            const arrivalMs = scenario.startMs + r.seconds * 1000;
+            const past = arrivalMs <= Date.now();
+            const key = 'where' + (r.status === 'core' ? 'Core' : 'Outer') + (past ? 'Past' : '');
+            return t(key, { time: formatArrival(r.seconds, state.lang), clock: wallClock(arrivalMs), km });
+        }
+
+        function renderWhere() {
+            const out = $('whereResult');
+            if (!out) return;
+            out.textContent = state.whereStatus ? t(state.whereStatus) : whereMessage();
+            const select = $('citySelect');
+            if (select) select.value = state.where && state.where.kind === 'city' ? state.where.id : '';
+        }
+
+        function renderCitySelect() {
+            const select = $('citySelect');
+            if (!select) return;
+            select.textContent = '';
+            const none = document.createElement('option');
+            none.value = '';
+            none.textContent = t('whereCityNone');
+            select.appendChild(none);
+            CITIES.slice().sort((a, b) => cityName(a).localeCompare(cityName(b), locale())).forEach((city) => {
+                const option = document.createElement('option');
+                option.value = city.id;
+                option.textContent = cityName(city);
+                select.appendChild(option);
+            });
+            select.value = state.where && state.where.kind === 'city' ? state.where.id : '';
+        }
+
+        function locate() {
+            if (!navigator.geolocation) { state.whereStatus = 'whereNoGeo'; renderWhere(); return; }
+            state.whereStatus = 'whereLocating';
+            renderWhere();
+            navigator.geolocation.getCurrentPosition((pos) => {
+                state.whereStatus = null;
+                state.where = { kind: 'geo', coords: [pos.coords.latitude, pos.coords.longitude] };
+                setYouMarker(state.where.coords);
+                renderWhere();
+            }, () => {
+                state.whereStatus = 'whereDenied';
+                renderWhere();
+            }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
         }
 
         // --- Отрисовка интерфейса ---
@@ -614,6 +765,7 @@
             let text = '';
             if (state.notice) text = t(state.notice.key, state.notice.params);
             else if (state.phase === 'error' && state.mode === 'current') text = t(navigator.onLine === false ? 'statusOffline' : 'statusError');
+            else if (state.mode === 'current' && state.fieldInfo && state.fieldInfo.source === 'single' && state.phase !== 'simulating') text = t('statusSimple');
             el.textContent = text;
             el.hidden = !text;
         }
@@ -693,9 +845,13 @@
             renderStatus();
             renderWind();
             renderCustomControls();
+            renderAgo();
             renderClock();
+            renderAccident();
+            renderStability();
             renderSummary();
             renderCityList();
+            renderWhere();
             refreshMarkerTexts();
         }
 
@@ -765,35 +921,34 @@
             if (el) el.textContent = text;
         }
 
-        function checkCityArrival(centerPolygon) {
-            const wind = state.sim.wind;
+        // Отмечает города, до которых облако дошло к текущему моменту. silent: без объявления для программ чтения с экрана.
+        function syncArrivals(silent) {
+            const sim = state.sim;
+            let changed = false;
             CITIES.forEach((city) => {
                 if (Object.prototype.hasOwnProperty.call(state.arrived, city.id)) return;
-                if (!pointInPolygon(city.coords, centerPolygon)) return;
-                const seconds = distanceBetween(NPP_COORDS, city.coords) / wind.speed;
+                const seconds = sim.scenario.arrivals[city.id];
+                if (seconds === undefined || seconds > sim.elapsed) return;
                 state.arrived[city.id] = seconds;
+                changed = true;
                 const marker = cityMarkers[city.id];
                 if (marker) marker.setStyle(cityStyle(true));
-                const time = formatArrival(seconds, state.lang);
-                announce(t('announce', { city: cityName(city), time }));
+                if (!silent) announce(t('announce', { city: cityName(city), time: formatArrival(seconds, state.lang) }));
+            });
+            if (changed) {
                 renderSummary();
                 renderCityList();
                 refreshMarkerTexts();
-            });
+            }
         }
 
         function drawPlume() {
             const sim = state.sim;
-            const distanceM = sim.wind.speed * sim.elapsed;
-            const hours = sim.elapsed / 3600;
-            const center = createPlumePolygon(NPP_COORDS, sim.bearing, distanceM, PLUME_HALF_ANGLE_DEG, PLUME_SEGMENTS);
-            const left = createPlumePolygon(NPP_COORDS, sim.bearing - AXIS_UNCERTAINTY_DEG, distanceM, PLUME_HALF_ANGLE_DEG, PLUME_SEGMENTS);
-            const right = createPlumePolygon(NPP_COORDS, sim.bearing + AXIS_UNCERTAINTY_DEG, distanceM, PLUME_HALF_ANGLE_DEG, PLUME_SEGMENTS);
-            const opacity = plumeOpacity(hours);
-            updatePlumeLayer('center', center, { color: 'red', fillColor: '#f03', fillOpacity: opacity, weight: 1.5 });
-            updatePlumeLayer('left', left, { color: '#f03', fillColor: '#f03', fillOpacity: opacity * 0.3, weight: 0 });
-            updatePlumeLayer('right', right, { color: '#f03', fillColor: '#f03', fillOpacity: opacity * 0.3, weight: 0 });
-            state.lastPolys = { center, left, right, opacity };
+            const polys = M.plumePolygons(sim.scenario.path, sim.elapsed);
+            const opacity = plumeOpacity(sim.elapsed / 3600);
+            updatePlumeLayer('outer', polys.outer, { color: '#f03', fillColor: '#f03', fillOpacity: opacity * 0.3, weight: 0 });
+            updatePlumeLayer('center', polys.core, { color: 'red', fillColor: '#f03', fillOpacity: opacity, weight: 1.5 });
+            state.lastPolys = { core: polys.core, outer: polys.outer, opacity };
             return state.lastPolys;
         }
 
@@ -801,40 +956,44 @@
             if (simulationInterval) clearInterval(simulationInterval);
             simulationInterval = null;
             state.phase = 'finished';
-            state.notice = { key: 'statusFinished', params: { h: MAX_SIMULATION_HOURS } };
+            state.notice = { key: 'statusFinished', params: { h: Math.round(state.sim.scenario.horizonSec / 3600) } };
             renderAll();
-            if (state.lastPolys) followPlume([state.lastPolys.center, state.lastPolys.left, state.lastPolys.right], true);
+            if (state.lastPolys) followPlume([state.lastPolys.core, state.lastPolys.outer], true);
         }
 
         function tick() {
             const sim = state.sim;
             if (!sim || sim.paused) return;
-            const maxSeconds = MAX_SIMULATION_HOURS * 3600;
+            const maxSeconds = sim.scenario.horizonSec;
             sim.elapsed = Math.min(maxSeconds, sim.elapsed + (UPDATE_INTERVAL_MS / 1000) * SIMULATION_SPEED_MULTIPLIER * SPEEDS[sim.speedIndex]);
             sim.ticks += 1;
             const polys = drawPlume();
-            checkCityArrival(polys.center);
+            syncArrivals(false);
             renderClock();
-            if (sim.ticks % FOLLOW_EVERY_TICKS === 0) followPlume([polys.center, polys.left, polys.right], false);
+            renderStability();
+            if (sim.ticks % FOLLOW_EVERY_TICKS === 0) followPlume([polys.core, polys.outer], false);
             if (sim.elapsed >= maxSeconds) finishSimulation();
         }
 
         async function startSimulation() {
             if (state.phase === 'simulating' || state.busy) return;
-            let wind;
-            if (state.mode === 'custom') {
-                wind = { speed: state.custom.speed, fromDeg: state.custom.deg, custom: true, time: null };
-            } else {
-                state.busy = true;
-                state.notice = null;
-                renderButton();
-                const success = await refreshWind(true);
-                state.busy = false;
-                if (!success) { renderAll(); return; }
-                wind = state.windData;
-            }
             state.notice = null;
-            if (wind.speed <= 0) {
+            if (state.mode === 'current') {
+                const info = state.fieldInfo;
+                const stale = !state.field || !info || Date.now() - info.ts > FIELD_REFRESH_MS[info.source];
+                if (stale) {
+                    state.busy = true;
+                    renderButton();
+                    const ok = await loadField(true);
+                    state.busy = false;
+                    if (!ok && !state.field) { renderAll(); return; }
+                    if (!ok) state.notice = { key: 'statusStale', params: { time: wallClock(state.fieldInfo.generatedMs) } };
+                }
+            }
+            const startMs = accidentStartMs();
+            const scenario = makeScenario(startMs);
+            if (!scenario) { renderAll(); return; }
+            if (scenario.lengthM < 1000) {
                 state.phase = 'ready';
                 state.notice = { key: 'statusCalm' };
                 renderAll();
@@ -842,10 +1001,23 @@
             }
             if (simulationInterval) clearInterval(simulationInterval);
             state.simStale = false;
-            state.sim = { wind: { ...wind }, bearing: windToBearing(wind.fromDeg), elapsed: 0, ticks: 0, paused: false, speedIndex: DEFAULT_SPEED_INDEX };
+            const w = M.windAt(scenario.field, NPP_COORDS[0], NPP_COORDS[1], startMs);
+            const elapsed0 = clamp(Math.round((Date.now() - startMs) / 1000), 0, scenario.horizonSec - 1);
+            state.sim = {
+                scenario,
+                wind: { speed: w.speed, fromDeg: w.fromDeg, custom: state.mode === 'custom', time: state.fieldInfo && state.fieldInfo.generatedMs ? new Date(state.fieldInfo.generatedMs) : null },
+                elapsed: elapsed0,
+                elapsed0,
+                ticks: 0,
+                paused: false,
+                speedIndex: DEFAULT_SPEED_INDEX
+            };
             resetSimulationVisuals();
             state.phase = 'simulating';
+            syncArrivals(true);
+            const polys = drawPlume();
             renderAll();
+            if (elapsed0 > 0) followPlume([polys.core, polys.outer], true);
             simulationInterval = setInterval(tick, UPDATE_INTERVAL_MS);
         }
 
@@ -853,7 +1025,7 @@
             if (state.phase === 'error' && state.mode === 'current') {
                 state.phase = 'loading';
                 renderAll();
-                refreshWind(false);
+                loadField(false);
             } else {
                 startSimulation();
             }
@@ -862,9 +1034,31 @@
         // --- Поделиться и картинка ---
 
         function currentShareUrl() {
-            const customWind = state.sim && state.sim.wind.custom ? { deg: state.sim.wind.fromDeg, speed: state.sim.wind.speed }
+            const sim = state.sim;
+            const customWind = sim && sim.wind.custom ? { deg: sim.wind.fromDeg, speed: sim.wind.speed }
                 : (state.mode === 'custom' ? state.custom : null);
-            return buildShareUrl(window.location.href, { lang: state.lang, custom: customWind });
+            let atMs = null;
+            if (!customWind && accidentUsable()) {
+                const start = sim && !state.simStale ? sim.scenario.startMs : accidentStartMs();
+                if (Date.now() - start > 10 * 60 * 1000) atMs = start;
+            }
+            return buildShareUrl(window.location.href, {
+                lang: state.lang,
+                custom: customWind,
+                atMs,
+                city: state.where && state.where.kind === 'city' ? state.where.id : null,
+                run: !!sim || !!customWind
+            });
+        }
+
+        function buildShareText() {
+            const parts = [t('shareText')];
+            if (state.sim) parts.push(t('summaryTitle', { n: Object.keys(state.arrived).length }) + '.');
+            if (state.where && state.where.kind === 'city') {
+                const msg = whereMessage();
+                if (msg) parts.push(msg);
+            }
+            return parts.join(' ');
         }
 
         async function copyText(text) {
@@ -888,7 +1082,7 @@
             const url = currentShareUrl();
             try {
                 if (navigator.share) {
-                    await navigator.share({ title: t('pageTitle'), text: t('shareText'), url });
+                    await navigator.share({ title: t('pageTitle'), text: buildShareText(), url });
                 } else {
                     await copyText(url);
                     showToast(t('shareCopied'));
@@ -912,9 +1106,8 @@
                 nppLabel: t('npp'),
                 npp: NPP_COORDS,
                 polygons: [
-                    { points: polys.left, fill: `rgba(255,0,51,${(polys.opacity * 0.3).toFixed(3)})` },
-                    { points: polys.right, fill: `rgba(255,0,51,${(polys.opacity * 0.3).toFixed(3)})` },
-                    { points: polys.center, fill: `rgba(255,0,51,${polys.opacity.toFixed(3)})`, stroke: '#ff5252' }
+                    { points: polys.outer, fill: `rgba(255,0,51,${(polys.opacity * 0.3).toFixed(3)})` },
+                    { points: polys.core, fill: `rgba(255,0,51,${polys.opacity.toFixed(3)})`, stroke: '#ff5252' }
                 ],
                 cities: CITIES.map((c) => ({
                     name: c.names[lang] || c.names.ru,
@@ -950,6 +1143,10 @@
 
         // --- События ---
 
+        function markStaleIfFinished() {
+            if (state.phase === 'finished') state.simStale = true;
+        }
+
         function setupEvents() {
             $('simulateBtn').addEventListener('click', onMainButton);
             $('pauseBtn').addEventListener('click', () => { if (state.sim) { state.sim.paused = !state.sim.paused; renderClock(); } });
@@ -963,22 +1160,47 @@
             $('infoPanelOverlay').addEventListener('click', closePanel);
             $('summaryAll').addEventListener('click', () => { if (isMobile()) openPanel(); else { const box = $('cityListBox'); if (box && box.scrollIntoView) box.scrollIntoView({ block: 'nearest' }); } });
             $('langSelect').addEventListener('change', (e) => setLanguage(e.target.value));
+            $('agoSelect').addEventListener('change', (e) => {
+                markStaleIfFinished();
+                state.agoHours = clamp(Number(e.target.value) || 0, 0, MAX_AGO_HOURS);
+                state.accidentAtMs = null;
+                state.notice = null;
+                deriveWindData();
+                rebuildPreview();
+                renderAll();
+            });
+            $('locateBtn').addEventListener('click', locate);
+            $('citySelect').addEventListener('change', (e) => {
+                state.whereStatus = null;
+                state.where = e.target.value ? { kind: 'city', id: e.target.value } : null;
+                setYouMarker(null);
+                renderWhere();
+            });
             document.querySelectorAll('input[name="windMode"]').forEach((r) => r.addEventListener('change', (e) => {
                 if (!e.target.checked) return;
                 state.mode = e.target.value;
                 state.notice = null;
-                if (state.phase === 'finished') state.simStale = true;
+                markStaleIfFinished();
                 if (state.mode === 'custom' && state.phase !== 'simulating' && state.phase !== 'finished') state.phase = 'ready';
-                if (state.mode === 'current' && state.phase === 'ready' && !state.windData) state.phase = 'error';
+                if (state.mode === 'current' && state.phase === 'ready' && !state.field) state.phase = 'error';
+                deriveWindData();
+                rebuildPreview();
                 renderAll();
             }));
-            $('customDeg').addEventListener('input', (e) => { if (state.phase === 'finished') state.simStale = true; state.custom.deg = normalizeAngle(Math.round(Number(e.target.value))); renderCustomControls(); renderWind(); });
+            $('customDeg').addEventListener('input', (e) => {
+                markStaleIfFinished();
+                state.custom.deg = normalizeAngle(Math.round(Number(e.target.value)));
+                renderCustomControls();
+                renderWind();
+                rebuildPreview();
+            });
             $('customSpeed').addEventListener('input', (e) => {
-                if (state.phase === 'finished') state.simStale = true;
-                const v = Math.min(CUSTOM_SPEED_MAX, Math.max(CUSTOM_SPEED_MIN, Number(e.target.value)));
+                markStaleIfFinished();
+                const v = clamp(Number(e.target.value), CUSTOM_SPEED_MIN, CUSTOM_SPEED_MAX);
                 state.custom.speed = Math.round(v * 10) / 10;
                 renderCustomControls();
                 renderWind();
+                rebuildPreview();
             });
             $('cityList').addEventListener('click', (e) => {
                 const btn = e.target.closest && e.target.closest('.city-row');
@@ -991,7 +1213,7 @@
                 if (marker) marker.openPopup();
             });
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
-            window.addEventListener('online', () => { if (state.phase === 'error' && state.mode === 'current') { state.phase = 'loading'; renderAll(); refreshWind(false); } });
+            window.addEventListener('online', () => { if (state.phase === 'error' && state.mode === 'current') { state.phase = 'loading'; renderAll(); loadField(false); } });
             window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installEvent = e; renderInstall(); });
             window.addEventListener('appinstalled', () => { state.installEvent = null; renderInstall(); });
             const installBtn = $('installBtn');
@@ -1012,6 +1234,20 @@
             navigator.serviceWorker.register('sw.js').catch((e) => console.error('SW error:', e.message));
         }
 
+        // Раз в минуту: обновляет поле ветра, когда оно устарело, и пересчитывает «сейчас» в блоке «Где я».
+        function housekeeping() {
+            if (state.phase === 'simulating' || state.busy) return;
+            const info = state.fieldInfo;
+            const wait = !info || state.phase === 'error' ? FIELD_RETRY_MS : (FIELD_REFRESH_MS[info.source] || FIELD_RETRY_MS);
+            if (!info || Date.now() - info.ts >= wait) {
+                loadField(false);
+            } else if (state.phase === 'ready') {
+                deriveWindData();
+                rebuildPreview();
+                renderWind();
+            }
+        }
+
         // --- Запуск ---
 
         applyStaticTexts();
@@ -1020,19 +1256,22 @@
         closePanel();
         if (state.mode === 'custom') state.phase = 'ready';
         renderInstall();
+        renderCitySelect();
         renderAll();
-        refreshWind(false);
-        setInterval(() => refreshWind(false), WIND_REFRESH_MS);
+        if (state.mode === 'custom') rebuildPreview();
+        loadField(false);
+        setInterval(housekeeping, 60 * 1000);
         registerServiceWorker();
-        if (shareParams.run && shareParams.custom) startSimulation();
+        if (shareParams.atInvalid) showToast(t('atInvalid'));
+        if (shareParams.run) startSimulation();
     }
 
     // ===== Запуск и экспорт для тестов =====
 
-    if (typeof module !== 'undefined' && module.exports) {
+    if (IN_NODE) {
         module.exports = {
             normalizeAngle, windToBearing, compassIndex, shortestAngleTarget, destinationPoint, distanceBetween,
-            createPlumePolygon, pointInPolygon, plumeOpacity, boundsOf, boundsContain, shrinkBounds,
+            plumeOpacity, boundsOf, boundsContain, shrinkBounds,
             formatHM, formatArrival, formatClock, parseWindResponse, buildWindUrl, parseShareParams, buildShareUrl,
             pickLanguage, sortCityRows, drawResultImage, CITIES, NPP_COORDS, SPEEDS, MAX_SIMULATION_HOURS, APP_VERSION
         };

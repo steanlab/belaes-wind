@@ -43,7 +43,8 @@ html, body {
 /* Нижняя панель управления */
 .action-area { position: absolute; bottom: 0; left: 0; right: 0; z-index: 950; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
 #statusMessage { background-color: rgba(255, 193, 7, 0.97); color: #222; padding: 12px 18px; text-align: center; width: 100%; max-width: 640px; font-size: 1em; font-weight: 600; pointer-events: all; }
-.dock { width: 100%; max-width: 640px; background: rgba(11, 29, 58, 0.93); color: #f0f0f0; padding: 10px 14px calc(10px + var(--safe-bottom)); pointer-events: all; border-radius: 14px 14px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.dock { width: 100%; max-width: 640px; background: rgba(11, 29, 58, 0.93); color: #f0f0f0; padding: 10px 14px calc(10px + var(--safe-bottom)); pointer-events: all; border-radius: 14px 14px 0 0; display: flex; flex-direction: column; gap: 10px; max-height: 62vh; max-height: 62dvh; overflow-y: auto; overscroll-behavior: contain; }
+.dock > * { flex-shrink: 0; }
 #iodine-info-footer { background-color: #0069d9; color: #fff; padding: 10px 14px; border-radius: 10px; text-align: left; font-size: 0.9em; line-height: 1.4; }
 #iodine-info-footer a { color: #fff; text-decoration: underline; }
 #iodine-info-footer a:hover { text-decoration: none; }
@@ -70,6 +71,15 @@ html, body {
 .whatif .radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; cursor: pointer; }
 .whatif input[type="range"] { width: 100%; accent-color: var(--yellow); }
 .whatif input:disabled { opacity: 0.5; }
+.dock-line { font-size: 0.9em; color: #cfe3ff; line-height: 1.35; }
+.ago-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.95em; }
+.ago-row select, .whatif select { min-height: 44px; padding: 6px 10px; font: inherit; color: #fff; background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 8px; max-width: 100%; }
+.ago-row select option, .whatif select option { color: #111; background: #fff; }
+.ago-row select:disabled { opacity: 0.5; }
+.whatif select { align-self: flex-start; }
+.where-note { font-size: 0.85em; color: #b8c4d9; }
+.where-result { font-size: 0.95em; line-height: 1.4; background: rgba(255, 255, 255, 0.08); border-left: 3px solid var(--yellow); padding: 8px 10px; border-radius: 6px; }
+.where-result:empty { display: none; }
 .custom-result { color: var(--yellow); font-weight: 600; }
 
 .btn-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
@@ -112,6 +122,9 @@ html, body {
 .links-panel ul { list-style-type: none; margin-bottom: 5px; padding-left: 0; }
 .links-panel li a { color: var(--blue); text-decoration: none; display: block; padding: 8px 5px; border-bottom: 1px solid #eee; font-size: 0.92em; }
 .links-panel li a:hover { text-decoration: underline; background: #f0f0f0; }
+.measure-box ul { list-style-type: none; margin-bottom: 5px; padding-left: 0; }
+.measure-box li a { color: var(--blue); text-decoration: none; display: block; padding: 8px 5px; border-bottom: 1px solid #eee; font-size: 0.92em; }
+.measure-box li a:hover { text-decoration: underline; background: #f0f0f0; }
 .donate-block { margin-top: 20px; padding-top: 10px; border-top: 2px solid #ddd; }
 .info-panel-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1099; }
 

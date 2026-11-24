@@ -6,7 +6,7 @@
     <title>Куда дует ветер от БелАЭС? | Учебная симуляция</title>
 
     <!-- Основные -->
-    <meta name="description" content="Учебный симулятор: как текущий ветер определяет направление и время прибытия возможного выброса с БелАЭС. Это иллюстрация, а не прогноз.">
+    <meta name="description" content="Учебный симулятор: как прогноз ветра определяет направление и время прибытия возможного выброса с БелАЭС. Это иллюстрация, а не прогноз.">
     <meta name="author" content="Сергей Бесараб">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="referrer" content="strict-origin-when-cross-origin">
@@ -29,12 +29,13 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="LAB66">
     <meta property="og:title" content="Куда дует ветер от БелАЭС? | Учебная симуляция">
-    <meta property="og:description" content="Интерактивный учебный симулятор: как текущий ветер определяет направление возможного выброса от БелАЭС. Не прогноз.">
+    <meta property="og:description" content="Интерактивный учебный симулятор: как прогноз ветра определяет направление возможного выброса от БелАЭС. Не прогноз.">
     <meta property="og:url" content="https://steanlab.github.io/belaes-wind/">
     <meta property="og:locale" content="ru_RU">
     <meta property="og:locale:alternate" content="be_BY">
     <meta property="og:locale:alternate" content="en_US">
     <meta property="og:locale:alternate" content="pl_PL">
+    <meta property="og:locale:alternate" content="lt_LT">
     <meta property="og:image" content="https://steanlab.github.io/belaes-wind/preview-image.jpg">
     <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="1200">
@@ -44,7 +45,7 @@
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Куда дует ветер от БелАЭС? | Учебная симуляция">
-    <meta name="twitter:description" content="Учебный симулятор: как текущий ветер определяет направление возможного выброса от БелАЭС. Не прогноз.">
+    <meta name="twitter:description" content="Учебный симулятор: как прогноз ветра определяет направление возможного выброса от БелАЭС. Не прогноз.">
     <meta name="twitter:image" content="https://steanlab.github.io/belaes-wind/preview-image.jpg">
     <meta name="twitter:image:alt" content="Градирни атомной электростанции на фоне вечернего неба">
 
@@ -54,9 +55,9 @@
         "@context": "https://schema.org",
         "@type": "WebApplication",
         "name": "Куда дует ветер от БелАЭС?",
-        "alternateName": ["Where does the wind blow from the Belarusian NPP?", "Куды дзьме вецер ад БелАЭС?", "Dokąd wieje wiatr od BiełAES?"],
+        "alternateName": ["Where does the wind blow from the Belarusian NPP?", "Куды дзьме вецер ад БелАЭС?", "Dokąd wieje wiatr od BiełAES?", "Kur pučia vėjas nuo Baltarusijos AE?"],
         "url": "https://steanlab.github.io/belaes-wind/",
-        "description": "Учебный симулятор: как текущий ветер определяет направление и время прибытия возможного выброса с БелАЭС. Это иллюстрация, а не прогноз.",
+        "description": "Учебный симулятор: как прогноз ветра определяет направление и время прибытия возможного выброса с БелАЭС. Это иллюстрация, а не прогноз.",
         "applicationCategory": "EducationalApplication",
         "operatingSystem": "Any",
         "browserRequirements": "Requires JavaScript",
@@ -101,7 +102,7 @@
             <div id="clockRow" class="clock-row" hidden>
                 <div class="clock-block">
                     <div id="clock" class="clock">+0 ч 0 мин</div>
-                    <div class="clock-caption" data-i18n="clockCaption">Прошло модельного времени</div>
+                    <div class="clock-caption" data-i18n="clockCaption">Прошло с момента аварии</div>
                 </div>
                 <div class="legend">
                     <span class="legend-item"><i class="sw sw-axis"></i><span data-i18n="legendAxis">ось облака</span></span>
@@ -117,11 +118,18 @@
                 <div id="summaryText" class="summary-text"></div>
                 <button type="button" id="summaryAll" class="link-btn" data-i18n="summaryAll">Все города</button>
             </div>
+            <p id="accidentLine" class="dock-line" hidden></p>
+            <p id="stabilityLine" class="dock-line" hidden></p>
+
+            <div class="ago-row" id="agoRow" hidden>
+                <label for="agoSelect" data-i18n="agoLabel">Авария произошла</label>
+                <select id="agoSelect"></select>
+            </div>
 
             <details class="whatif" id="whatIf">
                 <summary data-i18n="whatIfTitle">А если ветер другой?</summary>
                 <div class="whatif-body">
-                    <label class="radio"><input type="radio" name="windMode" value="current" checked> <span data-i18n="modeCurrent">Текущий ветер</span></label>
+                    <label class="radio"><input type="radio" name="windMode" value="current" checked> <span data-i18n="modeCurrent">Прогноз ветра</span></label>
                     <label class="radio"><input type="radio" name="windMode" value="custom"> <span data-i18n="modeCustom">Свой ветер</span></label>
                     <div id="customBox" hidden>
                         <label for="customDeg"><span data-i18n="customFromLabel">Откуда дует ветер</span>: <b id="customDegValue">270°</b></label>
@@ -132,6 +140,17 @@
                     </div>
                 </div>
             </details>
+
+            <details class="whatif" id="whereBox">
+                <summary data-i18n="whereTitle">Где я?</summary>
+                <div class="whatif-body">
+                    <button type="button" id="locateBtn" class="small-btn" data-i18n="whereLocate">📍 Определить моё место</button>
+                    <label for="citySelect" data-i18n="whereCityLabel">Или выберите город</label>
+                    <select id="citySelect"></select>
+                    <p class="where-note" data-i18n="whereNote">Место определяется только в вашем браузере и никуда не отправляется.</p>
+                </div>
+            </details>
+            <p id="whereResult" class="where-result" role="status" aria-live="polite"></p>
 
             <div class="btn-row">
                 <button type="button" id="simulateBtn" disabled>Загрузка...</button>
@@ -154,6 +173,7 @@
                     <option value="be">Беларуская</option>
                     <option value="en">English</option>
                     <option value="pl">Polski</option>
+                    <option value="lt">Lietuvių</option>
                 </select>
             </div>
             <div class="wind-rose-widget">
@@ -166,8 +186,19 @@
             <p class="wind-caption" data-i18n="windCaptionHtml">Стрелка показывает, куда дует ветер. Ветер на высоте 10 м у площадки АЭС (модель). Данные: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a></p>
             <p class="legend-note" id="legendNote" data-i18n="legendNote" hidden>Цвет не показывает концентрацию: на деле она с расстоянием падает на порядки.</p>
             <div id="cityListBox" hidden>
-                <h3 data-i18n="cityListTitle">Время прибытия облака (с момента запуска симуляции)</h3>
+                <h3 data-i18n="cityListTitle">Время прибытия облака (от момента аварии)</h3>
                 <ul id="cityList" class="city-list"></ul>
+            </div>
+            <div class="measure-box">
+                <h3 data-i18n="measureTitle">Где смотреть измерения</h3>
+                <p class="links-note" data-i18n="measureNote">Это официальные источники. Модель на этой странице их не заменяет. Данные EURDEP не проверены и принадлежат национальным службам.</p>
+                <ul>
+                    <li><a href="https://remap.jrc.ec.europa.eu/" target="_blank" rel="noopener noreferrer" data-i18n="measureEurdep">EURDEP, карта мощности дозы по Европе</a></li>
+                    <li><a href="https://monitoring.paa.gov.pl/maps-portal/" target="_blank" rel="noopener noreferrer" data-i18n="measurePaa">Польша, карта PAA</a></li>
+                    <li><a href="https://rsc.lrv.lt/" target="_blank" rel="noopener noreferrer" data-i18n="measureRsc">Литва, Центр радиационной безопасности</a></li>
+                    <li><a href="https://rad.org.by/" target="_blank" rel="noopener noreferrer" data-i18n="measureBel">Беларусь, Белгидромет</a></li>
+                    <li><a href="https://belaes.by/ru/radiatsionnaya-obstanovka.html" target="_blank" rel="noopener noreferrer" data-i18n="measureBelaes">БелАЭС, радиационный контроль</a></li>
+                </ul>
             </div>
             <div class="links-panel">
                 <h3 data-i18n="whatToDo">Что делать?</h3>
@@ -196,7 +227,7 @@
     <dialog id="aboutDialog" aria-labelledby="aboutTitle">
         <div class="about">
             <h2 id="aboutTitle" data-i18n="aboutTitle">О модели и данных</h2>
-            <p data-i18n="aboutWhatHtml">Учебная симуляция показывает, как текущий ветер определяет направление и время прибытия возможного выброса от БелАЭС. Это иллюстрация, а не прогноз и не оценка риска.</p>
+            <p data-i18n="aboutWhatHtml">Учебная симуляция показывает, как прогноз ветра определяет направление и время прибытия возможного выброса от БелАЭС. Это иллюстрация, а не прогноз и не оценка риска.</p>
             <h3 data-i18n="aboutModelTitle">Как устроена модель</h3>
             <ul data-i18n="aboutModelHtml"></ul>
             <h3 data-i18n="aboutDataTitle">Данные</h3>
@@ -216,6 +247,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="model.js" defer></script>
     <script src="i18n.js" defer></script>
     <script src="script.js" defer></script>
 </body>
